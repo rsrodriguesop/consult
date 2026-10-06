@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Consulta de Estoque</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{font-family:Arial,Helvetica,sans-serif;background:#f4f6f8;color:#1f2937}
+header{background:#1f2937;color:#fff;padding:20px 30px}
+header h1{font-size:22px;margin-bottom:4px}header span{font-size:13px;color:#cbd5e1}
+.container{max-width:1400px;margin:30px auto;padding:0 20px}
+.upload-box{background:#fff;border:2px dashed #cbd5e1;border-radius:12px;padding:30px;text-align:center;margin-bottom:25px}
+.upload-box:hover{border-color:#64748b;background:#f8fafc}
+.upload-box h2{font-size:18px;margin:8px 0}
+.upload-box p{color:#64748b;font-size:14px;margin-bottom:16px}
+#excelInput{display:none}
+.btn{border:none;border-radius:7px;padding:11px 18px;cursor:pointer;font-weight:bold;font-size:14px;display:inline-block}
+.btn-primary{background:#2563eb;color:#fff}.btn-primary:hover{background:#1d4ed8}
+.btn-secondary{background:#e5e7eb;color:#374151;height:42px}
+.card{background:#fff;border-radius:12px;padding:22px;margin-bottom:25px;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.filter-title{font-size:17px;font-weight:bold;margin-bottom:18px}
+.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:15px;align-items:end}
+.field{display:flex;flex-direction:column;gap:7px}
+.field label{font-size:13px;font-weight:bold;color:#475569}
+.field input,.field select{height:42px;border:1px solid #cbd5e1;border-radius:7px;padding:0 12px;font-size:14px;background:#fff;outline:none}
+.field input:focus,.field select:focus{border-color:#2563eb}
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:18px;margin-bottom:25px}
+.summary .card{margin:0}
+.sl{color:#64748b;font-size:13px;margin-bottom:8px}.sv{font-size:26px;font-weight:bold;color:#111827}
+.rh{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;gap:10px;flex-wrap:wrap}
+.rh h2{font-size:18px}
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th{background:#f1f5f9;color:#475569;text-align:left;font-size:13px;padding:13px;border-bottom:1px solid #e2e8f0;white-space:nowrap}
+td{padding:14px 13px;border-bottom:1px solid #e5e7eb;font-size:14px}
+tr:hover td{background:#f8fafc}
+.quantity{font-weight:bold;color:#15803d}.emp{color:#92400e;font-weight:600}.treatment{font-weight:600}
+.badge{display:inline-block;padding:5px 9px;border-radius:20px;font-size:12px;font-weight:bold;background:#dcfce7;color:#166534;white-space:nowrap}
+.badge.warn{background:#fef3c7;color:#92400e}.badge.bad{background:#fee2e2;color:#991b1b}
+.details-btn{border:1px solid #cbd5e1;background:#fff;padding:7px 11px;border-radius:6px;cursor:pointer;font-size:12px}
+.details-btn:hover{background:#f1f5f9}
+.empty{text-align:center;padding:40px 20px;color:#64748b}
+.aviso{display:none;background:#fef3c7;color:#92400e;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:14px}
+.modal{display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);align-items:center;justify-content:center;padding:20px;z-index:1000}
+.modal.active{display:flex}
+.modal-content{background:#fff;width:100%;max-width:1100px;max-height:80vh;overflow:auto;border-radius:12px;padding:25px}
+.mh{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.mh h2{font-size:18px}
+.close{border:none;background:transparent;font-size:25px;cursor:pointer;color:#64748b}
+@media(max-width:600px){header{padding:16px}.container{margin-top:20px;padding:0 12px}.upload-box{padding:25px 15px}}
+</style>
+</head>
+<body>
+<header><h1>Consulta de Estoque</h1><span>Sementes disponíveis para uso</span></header>
+<main class="container">
+  <section class="upload-box">
+    <h2>Carregar planilha de estoque</h2>
+    <p>Arquivo Excel (.xlsx ou .xls) com cultivar, tratamento, lote, quantidade, saldo bloqueado, saldo empenhado, volume_kg, data de validade e classificação</p>
+    <input type="file" id="excelInput" accept=".xlsx,.xls">
+    <label for="excelInput" class="btn btn-primary">Selecionar Excel</label>
+    <p id="fileName" style="margin:15px 0 0"></p>
+  </section>
+
+  <div class="aviso" id="aviso"></div>
+
+  <section class="card">
+    <div class="filter-title">Consultar disponibilidade</div>
+    <div class="filters">
+      <div class="field"><label for="cultivar">Cultivar</label><select id="cultivar"></select></div>
+      <div class="field"><label for="tratamento">Tratamento</label><select id="tratamento"></select></div>
+      <div class="field"><label for="cat">Categoria</label><select id="cat"></select></div>
+      <div class="field"><label for="cls">Classificação</label><select id="cls"></select></div>
+      <div class="field"><label for="busca">Pesquisa</label><input type="text" id="busca" placeholder="Cultivar, lote, produto..."></div>
+      <button class="btn btn-secondary" onclick="limparFiltros()">Limpar</button>
+    </div>
+  </section>
+
+  <section class="summary">
+    <div class="card"><div class="sl">Cultivares</div><div class="sv" id="totalCultivares">0</div></div>
+    <div class="card"><div class="sl">Tratamentos</div><div class="sv" id="totalTratamentos">0</div></div>
+    <div class="card"><div class="sl">Lotes</div><div class="sv" id="totalLotes">0</div></div>
+    <div class="card"><div class="sl">Quantidade utilizável</div><div class="sv" id="totalQuantidades">0</div></div>
+    <div class="card"><div class="sl">Empenhado</div><div class="sv" id="totalEmp">0</div></div>
+    <div class="card"><div class="sl">Volume utilizável (kg)</div><div class="sv" id="totalKg">0</div></div>
+  </section>
+
+  <section class="card">
+    <div class="rh"><h2>Disponibilidade por tratamento</h2><span id="resultadoInfo">Nenhum arquivo carregado</span></div>
+    <div class="tw">
+      <table>
+        <thead><tr><th>Cultivar</th><th>Tratamento</th><th>Lotes</th><th>Quantidade utilizável</th><th>Empenhado</th><th>Volume utilizável (kg)</th><th>Situação</th><th>Detalhes</th></tr></thead>
+        <tbody id="resultados"><tr><td colspan="8"><div class="empty">Carregue uma planilha para consultar o estoque.</div></td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<div class="modal" id="modal">
+  <div class="modal-content">
+    <div class="mh"><h2 id="modalTitulo">Detalhes dos lotes</h2><button class="close" onclick="fecharModal()">×</button></div>
+    <div id="modalConteudo"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const norm = s => String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/\s+/g, " ");
+const fmt = n => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(n);
+const esc = t => String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+
+const num = v => {
+  if (typeof v === "number") return isFinite(v) ? v : 0;
+  let s = String(v ?? "").trim().replace(/[^\d,.\-]/g, "");
+  if (!s || s === "-") return 0;
+  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+  else if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, "");
+  return Number(s) || 0;
+};
+
+const parseData = v => {
+  if (v instanceof Date && !isNaN(v)) return new Date(v.getTime() + 12 * 3600e3);
+  const m = String(v ?? "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  return m ? new Date(+m[3], +m[2] - 1, +m[1], 12) : null;
+};
+
+const COLUNAS = {
+  cultivar: [/cultivar/], tratamento: [/tratamento/], lote: [/^lote/],
+  quantidade: [/^quantidade$/, /^(qtd|qtde)\b/, /^quantidade/],
+  bloq: [/bloq/], emp: [/empenh/],
+  cat: [/^cat/], cls: [/classifica/], produto: [/produto/],
+  peneira: [/peneira/], pms: [/^pms/], kg: [/volume.*kg/, /^kg/, /volume/],
+  val: [/validade/, /venc/]
+};
+const OBRIGATORIAS = ["cultivar", "tratamento", "lote", "quantidade"];
+const FILTROS = [["cultivar", "Todas"], ["tratamento", "Todos"], ["cat", "Todas"], ["cls", "Todas"]];
+let dados = [], grupos = [];
+
+$("excelInput").addEventListener("change", e => {
+  const input = e.target, arquivo = input.files[0];
+  if (!arquivo) return;
+  $("fileName").textContent = "Arquivo: " + arquivo.name;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try { lerPlanilha(ev.target.result); }
+    catch (err) { alert("Não foi possível ler a planilha: " + err.message); }
+    input.value = "";
+  };
+  reader.readAsArrayBuffer(arquivo);
+});
+
+function lerPlanilha(buf) {
+  const wb = XLSX.read(new Uint8Array(buf), { type: "array", cellDates: true });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rg = XLSX.utils.decode_range(ws["!ref"]);
+  // ignora as colunas vazias ("Coluna27"...) no fim da planilha
+  let last = rg.s.c;
+  for (let c = rg.s.c; c <= rg.e.c; c++) {
+    const cell = ws[XLSX.utils.encode_cell({ r: rg.s.r, c })];
+    const v = cell ? String(cell.v).trim() : "";
+    if (v && !/^coluna\d+$/i.test(v)) last = c;
+    if (c > last + 30) break;
+  }
+  rg.e.c = last;
+  const raw = XLSX.utils.sheet_to_json(ws, { defval: "", range: XLSX.utils.encode_range(rg) });
+  if (!raw.length) { alert("A planilha está vazia."); return; }
+
+  // mapeia cada campo para o nome real da coluna
+  const heads = Object.keys(raw[0]).map(k => [norm(k), k]);
+  const col = {};
+  for (const [campo, pads] of Object.entries(COLUNAS)) {
+    for (const p of pads) {
+      const h = heads.find(([n]) => p.test(n) && !(campo === "quantidade" && /empenh|bloq/.test(n)));
+      if (h) { col[campo] = h[1]; break; }
+    }
+  }
+  const falta = OBRIGATORIAS.filter(k => !col[k]);
+  if (falta.length) { alert("Colunas não encontradas na planilha: " + falta.join(", ")); return; }
+  const av = [];
+  if (!col.emp) av.push("saldo empenhado");
+  if (!col.bloq) av.push("saldo bloqueado");
+  const aviso = $("aviso");
+  aviso.style.display = av.length ? "block" : "none";
+  aviso.textContent = av.length ? "Coluna não encontrada: " + av.join(", ") + ". O desconto desse saldo não foi aplicado. Colunas lidas: " + heads.map(h => h[1]).join(", ") : "";
+  const g = (r, c) => col[c] ? r[col[c]] : "";
+
+  const lotes = new Map();
+  raw.forEach(r => {
+    const cultivar = String(g(r, "cultivar")).trim();
+    if (!cultivar) return;
+    const tratamento = String(g(r, "tratamento")).trim() || "SEM TRATAMENTO";
+    const lote = String(g(r, "lote")).trim() || "-";
+    const key = [cultivar, tratamento, lote].map(norm).join("|");
+    let a = lotes.get(key);
+    if (!a) {
+      a = { cultivar, tratamento, lote, cat: "", cls: "", produto: "", peneira: "", pms: "",
+            quantidade: 0, bloq: 0, emp: 0, kgTotal: 0, val: null };
+      lotes.set(key, a);
+    }
+    a.quantidade += num(g(r, "quantidade"));
+    a.bloq += num(g(r, "bloq"));
+    a.emp += num(g(r, "emp"));
+    a.kgTotal += num(g(r, "kg"));
+    a.cat ||= String(g(r, "cat")).trim();
+    a.cls ||= String(g(r, "cls")).trim();
+    a.produto ||= String(g(r, "produto")).trim();
+    a.peneira ||= g(r, "peneira");
+    a.pms ||= g(r, "pms");
+    const d = parseData(g(r, "val"));
+    if (d && (!a.val || d < a.val)) a.val = d; // vale a validade mais próxima
+  });
+
+  dados = [...lotes.values()].map(a => {
+    a.disp = Math.max(0, a.quantidade - a.bloq - a.emp);
+    a.kg = a.quantidade > 0 ? a.kgTotal * a.disp / a.quantidade : 0; // kg proporcional ao saldo disponível
+    a.k = { cultivar: norm(a.cultivar), tratamento: norm(a.tratamento), cat: norm(a.cat), cls: norm(a.cls) };
+    return a;
+  });
+
+  FILTROS.forEach(([campo, rotulo]) => {
+    const opts = new Map();
+    dados.forEach(i => { if (i[campo] && !opts.has(i.k[campo])) opts.set(i.k[campo], i[campo]); });
+    const sel = $(campo);
+    sel.innerHTML = '<option value="">' + rotulo + '</option>';
+    [...opts].sort((a, b) => a[1].localeCompare(b[1])).forEach(([k, label]) => {
+      const o = document.createElement("option");
+      o.value = k; o.textContent = label; sel.appendChild(o);
+    });
+  });
+  aplicarFiltros();
+}
+
+FILTROS.forEach(([id]) => $(id).addEventListener("change", aplicarFiltros));
+$("busca").addEventListener("input", aplicarFiltros);
+
+const hoje = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; })();
+// Situação baseada no saldo: bloqueio/empenho parcial não derruba o lote inteiro
+const situacao = l =>
+  l.val && l.val < hoje ? ["VENCIDO", "bad"] :
+  l.disp <= 0 ? [l.bloq > 0 && l.emp <= 0 ? "BLOQUEADO" : l.emp > 0 ? "TOTALMENTE EMPENHADO" : "SEM SALDO", "bad"] :
+  (l.emp > 0 || l.bloq > 0) ? ["PARCIAL", "warn"] : ["DISPONÍVEL", ""];
+const utilizavel = l => situacao(l)[1] !== "bad";
+
+function aplicarFiltros() {
+  const busca = norm($("busca").value);
+  const filtrados = dados.filter(i =>
+    FILTROS.every(([campo]) => !$(campo).value || i.k[campo] === $(campo).value) &&
+    (!busca || [i.cultivar, i.tratamento, i.lote, i.produto].some(t => norm(t).includes(busca))));
+  const mapa = new Map();
+  filtrados.forEach(i => {
+    const k = i.k.cultivar + "||" + i.k.tratamento;
+    if (!mapa.has(k)) mapa.set(k, { cultivar: i.cultivar, tratamento: i.tratamento, quantidade: 0, emp: 0, kg: 0, lotes: [] });
+    const gr = mapa.get(k);
+    if (utilizavel(i)) { gr.quantidade += i.disp; gr.kg += i.kg; }
+    gr.emp += i.emp;
+    gr.lotes.push(i);
+  });
+  grupos = [...mapa.values()].sort((a, b) => a.cultivar.localeCompare(b.cultivar) || a.tratamento.localeCompare(b.tratamento));
+  mostrarResultados();
+}
+
+function mostrarResultados() {
+  const tbody = $("resultados");
+  tbody.innerHTML = "";
+  if (!grupos.length) {
+    tbody.innerHTML = '<tr><td colspan="8"><div class="empty">Nenhum produto encontrado.</div></td></tr>';
+    atualizarResumo(); return;
+  }
+  grupos.forEach((item, index) => {
+    const ok = item.lotes.filter(utilizavel).length;
+    const badge = ok === item.lotes.length ? '<span class="badge">DISPONÍVEL</span>' :
+      ok ? `<span class="badge warn">${ok} de ${item.lotes.length} utilizáveis</span>` : '<span class="badge bad">INDISPONÍVEL</span>';
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td><strong>${esc(item.cultivar)}</strong></td>
+      <td class="treatment">${esc(item.tratamento)}</td>
+      <td>${item.lotes.length}</td>
+      <td class="quantity">${fmt(item.quantidade)}</td>
+      <td class="emp">${fmt(item.emp)}</td>
+      <td>${fmt(item.kg)}</td>
+      <td>${badge}</td>
+      <td><button class="details-btn" onclick="mostrarLotes(${index})">Ver lotes</button></td>`;
+    tbody.appendChild(tr);
+  });
+  atualizarResumo();
+}
+
+function atualizarResumo() {
+  const soma = f => grupos.reduce((t, i) => t + f(i), 0);
+  $("totalCultivares").textContent = new Set(grupos.map(i => norm(i.cultivar))).size;
+  $("totalTratamentos").textContent = new Set(grupos.map(i => norm(i.tratamento))).size;
+  $("totalLotes").textContent = fmt(soma(i => i.lotes.length));
+  $("totalQuantidades").textContent = fmt(soma(i => i.quantidade));
+  $("totalEmp").textContent = fmt(soma(i => i.emp));
+  $("totalKg").textContent = fmt(soma(i => i.kg));
+  $("resultadoInfo").textContent = grupos.length + " combinação(ões) encontrada(s)";
+}
+
+function mostrarLotes(index) {
+  const item = grupos[index];
+  $("modalTitulo").textContent = item.cultivar + " — " + item.tratamento;
+  let html = `<p style="margin-bottom:20px;color:#64748b">Quantidade utilizável:
+    <strong style="color:#15803d">${fmt(item.quantidade)}</strong> · Empenhado: <strong style="color:#92400e">${fmt(item.emp)}</strong> · ${fmt(item.kg)} kg</p>
+    <div class="tw"><table><thead><tr><th>Lote</th><th>Cat.</th><th>Peneira</th><th>PMS</th><th>Quantidade</th><th>Bloqueado</th><th>Empenhado</th><th>Disponível</th><th>kg disp.</th><th>Validade</th><th>Classificação</th><th>Situação</th></tr></thead><tbody>`;
+  item.lotes.forEach(l => {
+    const [txt, cls] = situacao(l);
+    html += `<tr><td>${esc(l.lote)}</td><td>${esc(l.cat)}</td><td>${esc(l.peneira)}</td><td>${esc(l.pms)}</td>
+      <td>${fmt(l.quantidade)}</td><td>${fmt(l.bloq)}</td><td class="emp">${fmt(l.emp)}</td>
+      <td class="quantity">${fmt(l.disp)}</td><td>${fmt(l.kg)}</td>
+      <td>${l.val ? l.val.toLocaleDateString("pt-BR") : "-"}</td><td>${esc(l.cls)}</td>
+      <td><span class="badge ${cls}">${txt}</span></td></tr>`;
+  });
+  $("modalConteudo").innerHTML = html + "</tbody></table></div>";
+  $("modal").classList.add("active");
+}
+
+function fecharModal() { $("modal").classList.remove("active"); }
+function limparFiltros() { FILTROS.forEach(([id]) => $(id).value = ""); $("busca").value = ""; aplicarFiltros(); }
+$("modal").addEventListener("click", function (e) { if (e.target === this) fecharModal(); });
+FILTROS.forEach(([id, rotulo]) => $(id).innerHTML = '<option value="">' + rotulo + '</option>');
+</script>
+</body>
+</html>
