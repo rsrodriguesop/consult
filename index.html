@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Consultas</title>
+<title>consultas</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -57,26 +57,26 @@ tr:hover td{background:#f8fafc}
 </style>
 </head>
 <body>
-<header><h1>Consultas</h1><span>Sementes disponíveis para uso</span></header>
+<header><h1>consultas</h1><span>sementes disponíveis para uso</span></header>
 <main class="container">
   <section class="upload-box">
-    <h2>Carregar planilha</h2>
-    <p>Qualquer arquivo Excel ou CSV. As colunas são identificadas automaticamente e você pode ajustá-las.</p>
+    <h2>carregar arquivo</h2>
+    <p>qualquer arquivo excel ou csv.</p>
     <input type="file" id="excelInput" accept=".xlsx,.xls,.xlsm,.xlsb,.csv,.ods">
-    <label for="excelInput" class="btn btn-primary">Selecionar arquivo</label>
+    <label for="excelInput" class="btn btn-primary">selecionar arquivo</label>
     <p id="fileName" style="margin:15px 0 0"></p>
   </section>
 
   <div class="aviso" id="aviso"></div>
 
   <section class="card" id="mapaCard">
-    <div class="filter-title">Colunas da planilha</div>
+    <div class="filter-title">colunas da planilha</div>
     <div class="hint" id="mapaInfo"></div>
     <div class="filters" id="mapa"></div>
   </section>
 
   <section class="card">
-    <div class="filter-title" style="margin-bottom:18px">Consultar disponibilidade</div>
+    <div class="filter-title" style="margin-bottom:18px">consultar disponibilidade</div>
     <div class="filters">
       <div class="field"><label for="cultivar">Cultivar</label><select id="cultivar"></select></div>
       <div class="field"><label for="tratamento">Tratamento</label><select id="tratamento"></select></div>
