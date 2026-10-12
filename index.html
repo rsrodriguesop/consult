@@ -21,7 +21,8 @@ header h1{font-size:22px;margin-bottom:4px}header span{font-size:13px;color:#cbd
 .btn-primary{background:#2563eb;color:#fff}.btn-primary:hover{background:#1d4ed8}
 .btn-secondary{background:#e5e7eb;color:#374151;height:42px}
 .card{background:#fff;border-radius:12px;padding:22px;margin-bottom:25px;box-shadow:0 2px 8px rgba(0,0,0,.05)}
-.filter-title{font-size:17px;font-weight:bold;margin-bottom:18px}
+.filter-title{font-size:17px;font-weight:bold;margin-bottom:6px}
+.hint{font-size:13px;color:#64748b;margin-bottom:16px}
 .filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:15px;align-items:end}
 .field{display:flex;flex-direction:column;gap:7px}
 .field label{font-size:13px;font-weight:bold;color:#475569}
@@ -43,7 +44,9 @@ tr:hover td{background:#f8fafc}
 .details-btn{border:1px solid #cbd5e1;background:#fff;padding:7px 11px;border-radius:6px;cursor:pointer;font-size:12px}
 .details-btn:hover{background:#f1f5f9}
 .empty{text-align:center;padding:40px 20px;color:#64748b}
-.aviso{display:none;background:#fef3c7;color:#92400e;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:14px}
+.aviso{display:none;background:#fef3c7;color:#92400e;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:14px;line-height:1.5}
+.aviso.err{background:#fee2e2;color:#991b1b}
+#mapaCard{display:none}
 .modal{display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);align-items:center;justify-content:center;padding:20px;z-index:1000}
 .modal.active{display:flex}
 .modal-content{background:#fff;width:100%;max-width:1100px;max-height:80vh;overflow:auto;border-radius:12px;padding:25px}
@@ -58,16 +61,22 @@ tr:hover td{background:#f8fafc}
 <main class="container">
   <section class="upload-box">
     <h2>Carregar planilha</h2>
-    <p>Arquivo Excel (.xlsx/.xls) cultivar, tratamento, lote, quantidade, saldo bloqueado, saldo empenhado, volume_kg, data de validade e classificação</p>
-    <input type="file" id="excelInput" accept=".xlsx,.xls">
+    <p>Qualquer arquivo Excel ou CSV. As colunas são identificadas automaticamente e você pode ajustá-las.</p>
+    <input type="file" id="excelInput" accept=".xlsx,.xls,.xlsm,.xlsb,.csv,.ods">
     <label for="excelInput" class="btn btn-primary">Selecionar arquivo</label>
     <p id="fileName" style="margin:15px 0 0"></p>
   </section>
 
   <div class="aviso" id="aviso"></div>
 
+  <section class="card" id="mapaCard">
+    <div class="filter-title">Colunas da planilha</div>
+    <div class="hint" id="mapaInfo"></div>
+    <div class="filters" id="mapa"></div>
+  </section>
+
   <section class="card">
-    <div class="filter-title">Consultar disponibilidade</div>
+    <div class="filter-title" style="margin-bottom:18px">Consultar disponibilidade</div>
     <div class="filters">
       <div class="field"><label for="cultivar">Cultivar</label><select id="cultivar"></select></div>
       <div class="field"><label for="tratamento">Tratamento</label><select id="tratamento"></select></div>
@@ -107,9 +116,17 @@ tr:hover td{background:#f8fafc}
 
 <script>
 const $ = id => document.getElementById(id);
-const norm = s => String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/\s+/g, " ");
+const norm = s => String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[_\-.]+/g, " ").trim().replace(/\s+/g, " ");
 const fmt = n => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(n);
 const esc = t => String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+
+function aviso(msg, erro) {
+  const a = $("aviso");
+  a.className = "aviso" + (erro ? " err" : "");
+  a.style.display = msg ? "block" : "none";
+  a.textContent = msg || "";
+  if (erro) console.error(msg);
+}
 
 const num = v => {
   if (typeof v === "number") return isFinite(v) ? v : 0;
@@ -122,30 +139,67 @@ const num = v => {
 
 const parseData = v => {
   if (v instanceof Date && !isNaN(v)) return new Date(v.getTime() + 12 * 3600e3);
-  const m = String(v ?? "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  return m ? new Date(+m[3], +m[2] - 1, +m[1], 12) : null;
+  if (typeof v === "number" && v > 20000 && v < 80000) return new Date(Math.round((v - 25569) * 864e5) + 12 * 3600e3);
+  const s = String(v ?? "").trim();
+  let m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2}|\d{4})/);
+  if (m) return new Date(m[3].length === 2 ? 2000 + +m[3] : +m[3], +m[2] - 1, +m[1], 12);
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], 12) : null;
 };
 
-const COLUNAS = {
-  cultivar: [/cultivar/], tratamento: [/tratamento/], lote: [/^lote/],
-  quantidade: [/^quantidade$/, /^(qtd|qtde)\b/, /^quantidade/],
-  bloq: [/bloq/], emp: [/empenh/],
-  cat: [/^cat/], cls: [/classifica/], produto: [/produto/],
-  peneira: [/peneira/], pms: [/^pms/], kg: [/volume.*kg/, /^kg/, /volume/],
-  val: [/validade/, /venc/]
+// campo: [rótulo, padrões em ordem de prioridade, exclusão opcional]
+// a ordem importa: campos mais específicos primeiro, para não "roubarem" a coluna de quantidade
+const CAMPOS = {
+  cultivar:   ["Cultivar", [/cultivar/, /variedade/, /material/]],
+  tratamento: ["Tratamento", [/tratamento/, /^trat/]],
+  lote:       ["Lote", [/^lote/, /lote/, /^lot\b/]],
+  bloq:       ["Saldo bloqueado", [/bloq/]],
+  emp:        ["Saldo empenhado", [/empenh/, /reserv/]],
+  kg:         ["Volume (kg)", [/volume.*kg/, /kg/, /peso/, /volume/]],
+  val:        ["Validade", [/validade/, /venc/, /vcto/, /^val\b/]],
+  quantidade: ["Quantidade", [/^quantidade$/, /^(qtd|qtde|quant)/, /quantidade/, /saldo/, /estoque/], /kg|empenh|bloq|valid|venc|reserv|lote/],
+  cat:        ["Categoria", [/^cat/]],
+  cls:        ["Classificação", [/classifica/, /^class/]],
+  produto:    ["Produto", [/produto/, /descri/, /^item/]],
+  peneira:    ["Peneira", [/peneira/]],
+  pms:        ["PMS", [/^pms/, /peso.*mil/]]
 };
-const OBRIGATORIAS = ["cultivar", "tratamento", "lote", "quantidade"];
 const FILTROS = [["cultivar", "Todas"], ["tratamento", "Todos"], ["cat", "Todas"], ["cls", "Todas"]];
-let dados = [], grupos = [];
+let dados = [], grupos = [], cabecalhos = [], linhas = [], mapa = {};
+
+// quantos campos diferentes uma linha de células reconhece como cabeçalho
+function pontuar(row) {
+  const cels = row.map(c => typeof c === "string" ? norm(c) : "");
+  let n = 0;
+  for (const [, [, pads, ex]] of Object.entries(CAMPOS))
+    if (cels.some(c => c && pads.some(p => p.test(c)) && !(ex && ex.test(c)))) n++;
+  return n;
+}
+
+function detectar() {
+  const m = {}, usadas = new Set();
+  for (const [campo, [, pads, ex]] of Object.entries(CAMPOS)) {
+    for (const p of pads) {
+      const j = cabecalhos.findIndex((h, k) => h && !usadas.has(k) && p.test(norm(h)) && !(ex && ex.test(norm(h))));
+      if (j >= 0) { m[campo] = j; usadas.add(j); break; }
+    }
+  }
+  return m;
+}
 
 $("excelInput").addEventListener("change", e => {
   const input = e.target, arquivo = input.files[0];
   if (!arquivo) return;
   $("fileName").textContent = "Arquivo: " + arquivo.name;
+  if (typeof XLSX === "undefined") { aviso("A biblioteca XLSX não carregou (sem internet ou bloqueada).", true); input.value = ""; return; }
   const reader = new FileReader();
   reader.onload = ev => {
     try { lerPlanilha(ev.target.result); }
-    catch (err) { alert("Não foi possível ler a planilha: " + err.message); }
+    catch (err) { aviso("Não foi possível ler a planilha: " + err.message, true); }
+    input.value = "";
+  };
+  reader.onerror = () => {
+    aviso("O navegador não conseguiu abrir o arquivo. Se ele está no OneDrive, deixe-o disponível offline ou copie para o aparelho.", true);
     input.value = "";
   };
   reader.readAsArrayBuffer(arquivo);
@@ -153,50 +207,83 @@ $("excelInput").addEventListener("change", e => {
 
 function lerPlanilha(buf) {
   const wb = XLSX.read(new Uint8Array(buf), { type: "array", cellDates: true });
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const rg = XLSX.utils.decode_range(ws["!ref"]);
-  // ignora as colunas vazias ("Coluna27"...) no fim da planilha
-  let last = rg.s.c;
-  for (let c = rg.s.c; c <= rg.e.c; c++) {
-    const cell = ws[XLSX.utils.encode_cell({ r: rg.s.r, c })];
-    const v = cell ? String(cell.v).trim() : "";
-    if (v && !/^coluna\d+$/i.test(v)) last = c;
-    if (c > last + 30) break;
-  }
-  rg.e.c = last;
-  const raw = XLSX.utils.sheet_to_json(ws, { defval: "", range: XLSX.utils.encode_range(rg) });
-  if (!raw.length) { alert("A planilha está vazia."); return; }
-
-  // mapeia cada campo para o nome real da coluna
-  const heads = Object.keys(raw[0]).map(k => [norm(k), k]);
-  const col = {};
-  for (const [campo, pads] of Object.entries(COLUNAS)) {
-    for (const p of pads) {
-      const h = heads.find(([n]) => p.test(n) && !(campo === "quantidade" && /empenh|bloq/.test(n)));
-      if (h) { col[campo] = h[1]; break; }
+  // procura, em todas as abas, a linha (entre as 40 primeiras) que mais parece um cabeçalho
+  let best = null;
+  for (const nome of wb.SheetNames) {
+    const ws = wb.Sheets[nome];
+    if (!ws["!ref"]) continue;
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", blankrows: false });
+    for (let i = 0; i < Math.min(rows.length, 40); i++) {
+      const s = pontuar(rows[i]);
+      if (!best || s > best.s) best = { s, rows, i, nome };
     }
   }
-  const falta = OBRIGATORIAS.filter(k => !col[k]);
-  if (falta.length) { alert("Colunas não encontradas na planilha: " + falta.join(", ")); return; }
+  if (!best || best.rows.length < 2) { aviso("A planilha está vazia. Abas: " + wb.SheetNames.join(", "), true); return; }
+
+  const head = best.rows[best.i];
+  // cabeçalhos vazios ou genéricos ("Coluna27") ficam fora; nomes repetidos ganham sufixo
+  const vistos = {};
+  cabecalhos = head.map(h => {
+    let t = String(h ?? "").trim();
+    if (!t || /^(coluna|column|__empty)\s*_?\d+$/i.test(t)) return "";
+    vistos[t] = (vistos[t] || 0) + 1;
+    return vistos[t] > 1 ? t + " (" + vistos[t] + ")" : t;
+  });
+  linhas = best.rows.slice(best.i + 1).filter(r => r.some(c => String(c).trim() !== ""));
+  mapa = detectar();
+  montarMapa();
+  $("mapaCard").style.display = "block";
+  $("mapaInfo").textContent = `Aba "${best.nome}", cabeçalho na linha ${best.i + 1}, ${linhas.length} linhas de dados. ` +
+    (best.s < 2 ? "Não reconheci bem o cabeçalho — escolha as colunas abaixo. " : "Se algo estiver errado, troque a coluna correspondente.");
+  processar();
+}
+
+function montarMapa() {
+  $("mapa").innerHTML = "";
+  for (const [campo, [rotulo]] of Object.entries(CAMPOS)) {
+    const d = document.createElement("div");
+    d.className = "field";
+    const sel = document.createElement("select");
+    sel.id = "m_" + campo;
+    sel.innerHTML = '<option value="">— não usar —</option>' +
+      cabecalhos.map((h, k) => h ? `<option value="${k}">${esc(h)}</option>` : "").join("");
+    sel.value = mapa[campo] != null ? mapa[campo] : "";
+    sel.addEventListener("change", () => { mapa[campo] = sel.value === "" ? undefined : +sel.value; processar(); });
+    d.innerHTML = `<label for="m_${campo}">${rotulo}</label>`;
+    d.appendChild(sel);
+    $("mapa").appendChild(d);
+  }
+}
+
+function processar() {
+  const g = (r, c) => mapa[c] != null ? r[mapa[c]] : "";
+  const colCult = mapa.cultivar != null ? "cultivar" : mapa.produto != null ? "produto" : null;
+  const falta = [];
+  if (!colCult) falta.push("Cultivar (ou Produto)");
+  if (mapa.quantidade == null) falta.push("Quantidade");
+  if (falta.length) {
+    dados = [];
+    montarFiltros();
+    aviso("Não identifiquei a coluna: " + falta.join(", ") + ". Escolha-a no quadro \"Colunas da planilha\".", true);
+    return;
+  }
   const av = [];
-  if (!col.emp) av.push("saldo empenhado");
-  if (!col.bloq) av.push("saldo bloqueado");
-  const aviso = $("aviso");
-  aviso.style.display = av.length ? "block" : "none";
-  aviso.textContent = av.length ? "Coluna não encontrada: " + av.join(", ") + ". O desconto desse saldo não foi aplicado. Colunas lidas: " + heads.map(h => h[1]).join(", ") : "";
-  const g = (r, c) => col[c] ? r[col[c]] : "";
+  if (mapa.emp == null) av.push("saldo empenhado");
+  if (mapa.bloq == null) av.push("saldo bloqueado");
+  if (mapa.tratamento == null) av.push("tratamento (usando SEM TRATAMENTO)");
+  if (mapa.lote == null) av.push("lote");
+  aviso(av.length ? "Coluna não encontrada/usada: " + av.join(", ") + "." : "");
 
   const lotes = new Map();
-  raw.forEach(r => {
-    const cultivar = String(g(r, "cultivar")).trim();
+  linhas.forEach(r => {
+    const cultivar = String(g(r, colCult)).trim();
     if (!cultivar) return;
     const tratamento = String(g(r, "tratamento")).trim() || "SEM TRATAMENTO";
     const lote = String(g(r, "lote")).trim() || "-";
     const key = [cultivar, tratamento, lote].map(norm).join("|");
     let a = lotes.get(key);
     if (!a) {
-      a = { cultivar, tratamento, lote, cat: "", cls: "", produto: "", peneira: "", pms: "",
-            quantidade: 0, bloq: 0, emp: 0, kgTotal: 0, val: null };
+      a = { cultivar, tratamento, lote, cat: "", cls: "", produto: "", peneira: "", pms: "", quantidade: 0, bloq: 0, emp: 0, kgTotal: 0, val: null };
       lotes.set(key, a);
     }
     a.quantidade += num(g(r, "quantidade"));
@@ -214,11 +301,15 @@ function lerPlanilha(buf) {
 
   dados = [...lotes.values()].map(a => {
     a.disp = Math.max(0, a.quantidade - a.bloq - a.emp);
-    a.kg = a.quantidade > 0 ? a.kgTotal * a.disp / a.quantidade : 0; // kg proporcional ao saldo disponível
+    a.kg = a.quantidade > 0 ? a.kgTotal * a.disp / a.quantidade : 0;
     a.k = { cultivar: norm(a.cultivar), tratamento: norm(a.tratamento), cat: norm(a.cat), cls: norm(a.cls) };
     return a;
   });
+  if (!dados.length) aviso("Nenhuma linha com cultivar preenchida. Confira as colunas escolhidas.", true);
+  montarFiltros();
+}
 
+function montarFiltros() {
   FILTROS.forEach(([campo, rotulo]) => {
     const opts = new Map();
     dados.forEach(i => { if (i[campo] && !opts.has(i.k[campo])) opts.set(i.k[campo], i[campo]); });
@@ -236,7 +327,6 @@ FILTROS.forEach(([id]) => $(id).addEventListener("change", aplicarFiltros));
 $("busca").addEventListener("input", aplicarFiltros);
 
 const hoje = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; })();
-// Situação baseada no saldo: bloqueio/empenho parcial não derruba o lote inteiro
 const situacao = l =>
   l.val && l.val < hoje ? ["VENCIDO", "bad"] :
   l.disp <= 0 ? [l.bloq > 0 && l.emp <= 0 ? "BLOQUEADO" : l.emp > 0 ? "TOTALMENTE EMPENHADO" : "SEM SALDO", "bad"] :
@@ -248,16 +338,16 @@ function aplicarFiltros() {
   const filtrados = dados.filter(i =>
     FILTROS.every(([campo]) => !$(campo).value || i.k[campo] === $(campo).value) &&
     (!busca || [i.cultivar, i.tratamento, i.lote, i.produto].some(t => norm(t).includes(busca))));
-  const mapa = new Map();
+  const m = new Map();
   filtrados.forEach(i => {
     const k = i.k.cultivar + "||" + i.k.tratamento;
-    if (!mapa.has(k)) mapa.set(k, { cultivar: i.cultivar, tratamento: i.tratamento, quantidade: 0, emp: 0, kg: 0, lotes: [] });
-    const gr = mapa.get(k);
+    if (!m.has(k)) m.set(k, { cultivar: i.cultivar, tratamento: i.tratamento, quantidade: 0, emp: 0, kg: 0, lotes: [] });
+    const gr = m.get(k);
     if (utilizavel(i)) { gr.quantidade += i.disp; gr.kg += i.kg; }
     gr.emp += i.emp;
     gr.lotes.push(i);
   });
-  grupos = [...mapa.values()].sort((a, b) => a.cultivar.localeCompare(b.cultivar) || a.tratamento.localeCompare(b.tratamento));
+  grupos = [...m.values()].sort((a, b) => a.cultivar.localeCompare(b.cultivar) || a.tratamento.localeCompare(b.tratamento));
   mostrarResultados();
 }
 
